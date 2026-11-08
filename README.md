@@ -39,6 +39,26 @@ whole card onto a new, good card (step 3).
 
 ---
 
+## The easy way: let Claude Code do it
+
+Don't want to type PowerShell commands? If you use [Claude Code](https://claude.com/claude-code),
+it can do all the steps below for you. This repo contains a [`CLAUDE.md`](CLAUDE.md) that
+tells Claude exactly how to do it safely (backup first, never format, always confirm the disk).
+
+1. Download this repo (green **Code** button → **Download ZIP**) and extract it, e.g. to `C:\R36S`
+2. Open a terminal **as administrator** (needed for direct card access), then:
+   ```
+   cd C:\R36S
+   claude
+   ```
+3. Tell Claude what you want, e.g.:
+   *"Put the games from C:\Games on my R36S."*
+
+Claude will ask you to insert the card, confirm the disk number with you, make the backup
+and add your games. You still have to swap the card between device and card reader yourself.
+
+---
+
 ## What you need
 
 - A Windows 10/11 PC

@@ -39,6 +39,28 @@ Karte auf eine neue, gute Karte kopieren (Schritt 3).
 
 ---
 
+## Der einfache Weg: Claude Code macht es für dich
+
+Keine Lust auf PowerShell-Befehle? Wenn du [Claude Code](https://claude.com/claude-code) nutzt,
+kann es alle Schritte unten für dich erledigen. Im Repo liegt eine [`CLAUDE.md`](CLAUDE.md),
+in der steht, wie Claude dabei sicher vorgeht (erst Backup, nie formatieren, Datenträger
+immer mit dir abklären).
+
+1. Repo herunterladen (grüner Knopf **Code** → **Download ZIP**) und entpacken, z. B. nach `C:\R36S`
+2. Ein Terminal **als Administrator** öffnen (nötig für den direkten Kartenzugriff), dann:
+   ```
+   cd C:\R36S
+   claude
+   ```
+3. Claude sagen, was du willst, z. B.:
+   *„Pack die Spiele aus C:\Spiele auf meinen R36S.“*
+
+Claude bittet dich, die Karte einzustecken, klärt mit dir die Datenträgernummer, macht das
+Backup und fügt deine Spiele hinzu. Nur das Umstecken der Karte zwischen Gerät und
+Kartenleser musst du selbst machen.
+
+---
+
 ## Was du brauchst
 
 - Einen PC mit Windows 10/11

@@ -35,7 +35,8 @@ param(
     [string[]]$Rom,
     [string[]]$Name,
     [switch]$RemoveSgbBorder,
-    [switch]$Force
+    [switch]$Force,
+    [switch]$Yes          # Clone without the interactive YES prompt (for tools/agents - only after the user agreed)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -255,7 +256,7 @@ switch ($Action) {
             if (-not $Force) { throw "Disk $DiskNumber already looks like an R36S-H card. Is it your ORIGINAL card? Use -Force only if you really want to overwrite it." }
         }
         Write-Host ("Disk {0}: {1} ({2:N1} GB) will be COMPLETELY OVERWRITTEN." -f $DiskNumber, $d.FriendlyName, ($d.Size / 1GB)) -ForegroundColor Yellow
-        if ((Read-Host "Type YES to continue") -ne 'YES') { Write-Host "Cancelled."; break }
+        if (-not $Yes -and (Read-Host "Type YES to continue") -ne 'YES') { Write-Host "Cancelled."; break }
 
         Get-Partition -DiskNumber $DiskNumber -ErrorAction SilentlyContinue | Where-Object { $_.DriveLetter -and $_.DriveLetter -ne [char]0 } |
             ForEach-Object { Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $_.PartitionNumber -AccessPath "$($_.DriveLetter):\" -ErrorAction SilentlyContinue }
@@ -308,7 +309,13 @@ switch ($Action) {
                 $title = if ($Name) { $Name[$i] } else { [IO.Path]::GetFileNameWithoutExtension($f.Name) }
                 $title = ($title -replace '[\[\]]', '' -replace ',', ' ' -replace '\s+', ' ').Trim()
                 $zip = Join-Path $stage "$title.zip"
-                if ($f.Extension -ieq '.zip') { Copy-Item -LiteralPath $f.FullName $zip }
+                if ($System -ieq 'PS') {
+                    # PlayStation games are stored as plain disc images, not zipped
+                    if ($f.Extension -notin '.img', '.iso', '.IMG', '.ISO') { throw "PS games must be .img or .iso files: $($f.Name)" }
+                    $zip = Join-Path $stage "$title$($f.Extension.ToLower())"
+                    Copy-Item -LiteralPath $f.FullName $zip
+                }
+                elseif ($f.Extension -ieq '.zip') { Copy-Item -LiteralPath $f.FullName $zip }
                 else {
                     $bytes = [IO.File]::ReadAllBytes($f.FullName)
                     if ($RemoveSgbBorder -and $f.Extension -ieq '.gb') {
@@ -330,10 +337,11 @@ switch ($Action) {
                 $lines = Read-List $dir
                 $imgDir = Join-Path $dir 'IMAGES'; if (-not [IO.Directory]::Exists($imgDir)) { [void][IO.Directory]::CreateDirectory($imgDir) }
                 foreach ($it in $items) {
-                    $target = Join-Path $dir "$($it.Title).zip"
+                    $fileName = [IO.Path]::GetFileName($it.Zip)
+                    $target = Join-Path $dir $fileName
                     [IO.File]::Copy($it.Zip, $target, $true)
                     if (-not [IO.File]::Exists((Join-Path $imgDir "$($it.Title).png"))) { [IO.File]::Copy($it.Png, (Join-Path $imgDir "$($it.Title).png"), $true) }
-                    if (-not ($lines | Where-Object { $_.Split(',')[0].Trim() -ieq "$($it.Title).zip" })) { $lines += "$($it.Title).zip,$($it.Title),$($it.Title)" }
+                    if (-not ($lines | Where-Object { $_.Split(',')[0].Trim() -ieq $fileName })) { $lines += "$fileName,$($it.Title),$($it.Title)" }
                     $ok = (Get-FileHash -LiteralPath $it.Zip -Algorithm SHA1).Hash -eq (Get-FileHash -LiteralPath $target -Algorithm SHA1).Hash
                     if ($ok) { Write-Host "  added: $System\$($it.Title)" } else { Write-Warning "  $($it.Title): copy could not be verified - the card may be damaged." }
                 }
@@ -350,7 +358,10 @@ switch ($Action) {
             $dir = Get-SystemFolder $root
             $lines = Read-List $dir
             foreach ($n in $Name) {
-                $zipName = if ($n -match '\.(zip|iso|img)$') { $n } else { "$n.zip" }
+                $zipName = if ($n -match '\.(zip|iso|img)$') { $n } else {
+                    $hit = [IO.Directory]::GetFiles($dir) | Where-Object { [IO.Path]::GetFileNameWithoutExtension($_) -ieq $n -and $_ -match '\.(zip|iso|img)$' } | Select-Object -First 1
+                    if ($hit) { [IO.Path]::GetFileName($hit) } else { "$n.zip" }
+                }
                 $before = $lines.Count
                 $lines = @($lines | Where-Object { $_.Split(',')[0].Trim() -ine $zipName })
                 $zip = Join-Path $dir $zipName
