@@ -124,6 +124,24 @@ nur 29 GB und nach wenigen Schreibvorgängen **defekte Blöcke**. Hast du eine n
 Mit `YES` bestätigen. Nach dem Schreiben wird die neue Karte geprüft. Dann in Slot 1 stecken
 und testen. Die alte Karte als Reserve aufheben.
 
+### Nur eine kleinere Karte da (z. B. 16 GB)? *(experimentell)*
+
+Die Original-Karte hat ~30 GB, größtenteils Spiele, die man nie spielt (tausende MAME-/Arcade-
+und PlayStation-Spiele). `CloneSmall` kopiert das **System** und nur die **Spiele, die du willst**
+auf eine kleinere Karte. Braucht [Python 3](https://www.python.org/downloads/).
+
+```powershell
+.\r36s-h-tool.ps1 -Action CloneSmall -DiskNumber 5 -ImagePath C:\R36S\backup.img -Games "zelda","kirby","super mario world"
+```
+
+- `-Games` sind Wörter, die im Dateinamen oder Menütitel des Spiels vorkommen. Alle passenden
+  Spiele (alle Regionen/Versionen) werden kopiert. Systeme ohne Treffer behalten ein kleines Spiel,
+  damit ihre Liste im Menü nie leer ist.
+- System + die Spiele oben brauchen nur etwa **1,2 GB**. Eigene Spiele danach mit `-Action Add` hinzufügen.
+- Bei mir mit einer 16-GB-Karte erfolgreich. Das System Datei für Datei zu kopieren ist heikel
+  (kleingeschriebene Dateinamen müssen klein bleiben, sonst hängt das Gerät am Logo – das Skript
+  achtet darauf). Die Original-Karte aufheben, bis die neue läuft.
+
 ## Schritt 4: Spiele hinzufügen
 
 Auf der Karte gibt es einen Ordner pro System. Diese Namen bei `-System` angeben:

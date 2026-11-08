@@ -10,6 +10,8 @@
     List     Show removable disks and whether they look like an R36S-H card
     Backup   Copy the whole card into an image file and verify it
     Clone    Write a backup image to a NEW card (same size or bigger) and verify it
+    CloneSmall  Move the system to a SMALLER card (e.g. 16 GB) with only the games you choose
+             (experimental, needs Python 3)
     Add      Add games to a system folder (zip + game list entry + preview image)
     Remove   Remove games from a system folder
 
@@ -28,7 +30,7 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('List', 'Backup', 'Clone', 'Add', 'Remove')] [string]$Action,
+    [Parameter(Mandatory)][ValidateSet('List', 'Backup', 'Clone', 'CloneSmall', 'Add', 'Remove')] [string]$Action,
     [int]$DiskNumber = -1,
     [string]$ImagePath,
     [string]$System,
@@ -36,7 +38,8 @@ param(
     [string[]]$Name,
     [switch]$RemoveSgbBorder,
     [switch]$Force,
-    [switch]$Yes          # Clone without the interactive YES prompt (for tools/agents - only after the user agreed)
+    [switch]$Yes,         # Clone/CloneSmall without the interactive YES prompt (for tools/agents - only after the user agreed)
+    [string[]]$Games      # CloneSmall: words/regex of games to keep, e.g. "zelda","kirby","super mario world"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -292,6 +295,80 @@ switch ($Action) {
         if ([BitConverter]::ToString($shaA.Hash) -ne [BitConverter]::ToString($shaB.Hash)) { throw "Verification FAILED - the new card may be faulty." }
         Update-HostStorageCache
         Write-Host "Clone OK. Put the new card into slot 1 and start the device." -ForegroundColor Green
+    }
+
+    'CloneSmall' {
+        $d = Get-SafeDisk
+        if (-not $ImagePath -or -not (Test-Path -LiteralPath $ImagePath)) { throw "Pass the backup image with -ImagePath." }
+        $dev = "\\.\PhysicalDrive$DiskNumber"
+        if ((Find-Fat32 $dev) -and -not $Force) { throw "Disk $DiskNumber already looks like an R36S-H card. Is it your ORIGINAL card? Use -Force only if you really want to overwrite it." }
+        $fat = Find-Fat32 $ImagePath
+        if (-not $fat) { throw "The backup image contains no hidden FAT32. Wrong file?" }
+        $py = @('py', 'python', 'python3') | ForEach-Object { Get-Command $_ -ErrorAction SilentlyContinue } | Select-Object -First 1
+        if (-not $py) { throw "CloneSmall needs Python 3 (https://www.python.org/downloads/)." }
+        $helper = Join-Path $PSScriptRoot 'tools\clone_small.py'
+        if (-not (Test-Path -LiteralPath $helper)) { throw "tools\clone_small.py is missing." }
+        $rx = if ($Games) { ($Games | ForEach-Object { [regex]::Escape($_).Replace('\ ', ' ') }) -join '|' } else { '-' }
+
+        # size check (dry run)
+        $dryOut = & $py.Source -I $helper $ImagePath $fat.Offset 'X:\' $rx --dry-run
+        $dryOut | Where-Object { $_ -like '  game:*' } | ForEach-Object { Write-Host $_ }
+        $need = [long](($dryOut | Where-Object { $_ -like 'FILES *' }) -split ' ')[3]
+        $have = ($d.Size / 512 - $fat.Lba) * 512
+        Write-Host ("Data to copy: {0:N2} GB, new card: {1:N2} GB" -f ($need / 1GB), ($have / 1GB))
+        if ($need -gt $have * 0.9) { throw "That does not fit. Choose fewer games with -Games." }
+
+        Write-Host ("Disk {0}: {1} ({2:N1} GB) will be COMPLETELY OVERWRITTEN." -f $DiskNumber, $d.FriendlyName, ($d.Size / 1GB)) -ForegroundColor Yellow
+        if (-not $Yes -and (Read-Host "Type YES to continue") -ne 'YES') { Write-Host "Cancelled."; break }
+
+        Get-Partition -DiskNumber $DiskNumber -ErrorAction SilentlyContinue | Where-Object { $_.DriveLetter -and $_.DriveLetter -ne [char]0 } |
+            ForEach-Object { Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $_.PartitionNumber -AccessPath "$($_.DriveLetter):\" -ErrorAction SilentlyContinue }
+        Start-Sleep 2
+
+        # temporary partition table: FAT32 from the same sector as on the original card
+        $sectors = [uint32]($d.Size / 512)
+        $pre = New-Object byte[] ($fat.Lba * 512)
+        $pre[450] = 0x0C
+        [BitConverter]::GetBytes([uint32]$fat.Lba).CopyTo($pre, 454)
+        [BitConverter]::GetBytes([uint32]($sectors - $fat.Lba)).CopyTo($pre, 458)
+        [BitConverter]::GetBytes([uint32]0x52333653).CopyTo($pre, 440)
+        $pre[510] = 0x55; $pre[511] = 0xAA
+        Write-Bytes $dev 0 $pre
+        $part = $null
+        for ($i = 0; $i -lt 30 -and -not $part; $i++) {
+            Update-HostStorageCache; Start-Sleep 1
+            $part = Get-Partition -DiskNumber $DiskNumber -ErrorAction SilentlyContinue | Where-Object { $_.Offset -eq $fat.Offset } | Select-Object -First 1
+        }
+        if (-not $part) { throw "Windows did not detect the new partition." }
+        $clusterBytes = [int](Read-Bytes $ImagePath ($fat.Offset + 13) 1)[0] * 512
+        [void](Format-Volume -Partition $part -FileSystem FAT32 -AllocationUnitSize $clusterBytes -NewFileSystemLabel '' -Force -Confirm:$false)
+        $part = Get-Partition -DiskNumber $DiskNumber | Where-Object { $_.Offset -eq $fat.Offset } | Select-Object -First 1
+        if (-not $part.DriveLetter -or $part.DriveLetter -eq [char]0) {
+            Add-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $part.PartitionNumber -AssignDriveLetter; Start-Sleep 2
+            $part = Get-Partition -DiskNumber $DiskNumber | Where-Object { $_.Offset -eq $fat.Offset } | Select-Object -First 1
+        }
+        $root = "$($part.DriveLetter):\"
+
+        $start = Get-Date
+        & $py.Source -I $helper $ImagePath $fat.Offset $root $rx | ForEach-Object {
+            if ($_ -like 'PROGRESS *') { $x = $_ -split ' '; Show-Progress 'Copying system and games' ([long]$x[2]) ([long]$x[3]) $start }
+            elseif ($_ -notlike '  game:*' -and $_ -notlike 'FILES *') { Write-Host $_ }
+        }
+        if ($LASTEXITCODE) { throw "Copying failed." }
+
+        Write-VolumeCache -DriveLetter $part.DriveLetter
+        $chk = cmd /c "chkdsk $($part.DriveLetter):" 2>&1
+        if ($LASTEXITCODE -ne 0) { Write-Warning "chkdsk reports problems:`n$($chk -join "`n")" }
+        Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $part.PartitionNumber -AccessPath $root
+        Start-Sleep 2
+
+        # boot area (everything before the FAT32) exactly as on the original card
+        Write-Bytes $dev 0 (Read-Bytes $ImagePath 0 ($fat.Lba * 512))
+        Update-HostStorageCache; Start-Sleep 2
+        Get-Partition -DiskNumber $DiskNumber -ErrorAction SilentlyContinue | Where-Object { $_.DriveLetter -and $_.DriveLetter -ne [char]0 } |
+            ForEach-Object { Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $_.PartitionNumber -AccessPath "$($_.DriveLetter):\" -ErrorAction SilentlyContinue }
+        if (-not (Test-Same (Read-Bytes $dev 0 512) (Read-Bytes $ImagePath 0 512))) { throw "Writing the boot area failed." }
+        Write-Host "CloneSmall OK. Put the new card into slot 1 and start the device. Add more games with -Action Add." -ForegroundColor Green
     }
 
     'Add' {

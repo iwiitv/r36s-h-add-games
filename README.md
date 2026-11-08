@@ -122,6 +122,23 @@ only 29 GB and showed **defective blocks** after a few writes. If you have a new
 Type `YES` to confirm. The new card is checked after writing. Then put it into slot 1 of the
 device and test it. Keep the old card as a spare.
 
+### Only have a smaller card (e.g. 16 GB)? *(experimental)*
+
+The whole stock card is ~30 GB, mostly games you'll never play (thousands of MAME/arcade
+and PlayStation games). `CloneSmall` copies the **system** and only the **games you choose**
+onto a smaller card. Needs [Python 3](https://www.python.org/downloads/).
+
+```powershell
+.\r36s-h-tool.ps1 -Action CloneSmall -DiskNumber 5 -ImagePath C:\R36S\backup.img -Games "zelda","kirby","super mario world"
+```
+
+- `-Games` are words that must appear in the game's file name or menu title. Every matching
+  game (all regions/versions) is copied. Systems without a match keep one small game so their
+  menu list is never empty.
+- The system + the games above need only about **1.2 GB**. Add your own games afterwards with `-Action Add`.
+- Works on my unit with a 16 GB card. Copying the system file by file is delicate (see
+  "How the card works" below), so keep your original card until the new one runs.
+
 ## Step 4: Add your games
 
 The card has one folder per system. Use these names for `-System`:
@@ -203,7 +220,9 @@ sudo umount /mnt
   `Name.zip,English name,Chinese name`, UTF-8 with BOM, CRLF) and `IMAGES\Name.png` (320×240 preview).
 - The system itself (Linux) also lives on this file system (`cubegm`, `rootfs`). Copying it
   file by file needs care: lowercase file names must stay lowercase (FAT "NT case" flag),
-  otherwise the device hangs at the logo. `-Action Clone` copies the whole card 1:1 and avoids this.
+  otherwise the device hangs at the logo. `-Action Clone` copies the whole card 1:1 and avoids
+  this; `-Action CloneSmall` restores these flags when copying file by file.
+- Everything before the FAT32 (sectors 0–62) must be copied exactly from the original card.
 
 ## Legal
 

@@ -47,6 +47,13 @@ Assume no technical knowledge.
    `-Action List` again → confirm the NEW card's number (it must NOT say "R36S-H card")
    → `-Action Clone -DiskNumber <new> -ImagePath <backup> -Yes` after explicit OK.
    Afterwards the new card goes into slot 1 and the user tests it.
+   **Smaller new card** (e.g. 16 GB, smaller than the backup): use
+   `-Action CloneSmall -DiskNumber <new> -ImagePath <backup> -Games "<word1>","<word2>" -Yes`
+   after explicit OK. Ask the user which games/series they want (words that appear in file
+   names or menu titles, e.g. "zelda","kirby"). Needs Python 3 (check with `py --version`).
+   It copies the system file by file (keeping the lowercase-name flags) plus only the chosen
+   games, and copies the boot area (sectors before the FAT32) from the backup. Experimental:
+   tell the user to keep the original card until the new one boots.
 6. **Add games.** Ask where the game files are. Pick the system folder from the file extension:
 
    | Extension | `-System` |
@@ -85,6 +92,8 @@ Assume no technical knowledge.
 | "System folder 'X' not found" | The error lists the available folders. Pick one of them. |
 | Game doesn't start | Try another dump/region of the game. GBA and PS are demanding for this device. |
 | Device hangs at the boot logo after Clone | Re-run Clone (verification must pass); if it persists, put the original card back. |
+| Device hangs at the boot logo after CloneSmall | Lowercase name flags or boot area wrong. Re-run CloneSmall; if it persists use a ≥ 32 GB card with `Clone`. |
+| "That does not fit" (CloneSmall) | Choose fewer games with `-Games`. |
 | ArkOS / dArkOS | Not supported on this model (different chip). Don't try. |
 
 ## Notes
