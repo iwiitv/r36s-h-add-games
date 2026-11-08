@@ -1,0 +1,4 @@
+*.img
+*.img.part
+*.img.sha1
+sector0-*.bin
